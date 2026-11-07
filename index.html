@@ -12,7 +12,7 @@
   if (self === top) { document.getElementById("antiClickjack").remove(); }
   else { try { top.location = self.location; } catch (e) {} }
 </script>
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="manifest.json" crossorigin="use-credentials">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Görevler</title>
@@ -184,7 +184,21 @@ async function applyNetwork() {
   }
   updateStatus();
 }
+let errMsg = "", retryTimer = null, retryDelay = 5000;
+function scheduleRetry() {
+  if (retryTimer || !auth.currentUser) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    retryDelay = Math.min(retryDelay * 2, 60000);
+    if (auth.currentUser) start();
+  }, retryDelay);
+}
 function updateStatus() {
+  if (errMsg) {
+    statusEl.textContent = errMsg;
+    statusEl.className = "status wait";
+    return;
+  }
   if (netOn) {
     statusEl.textContent = pendingWrites ? "Senkron oluyor…" : "Senkron açık";
     statusEl.className = "status ok";
@@ -199,7 +213,7 @@ function updateStatus() {
 window.addEventListener("online", applyNetwork);
 window.addEventListener("offline", applyNetwork);
 if (conn && conn.addEventListener) conn.addEventListener("change", applyNetwork);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) applyNetwork(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { applyNetwork(); if (auth.currentUser && !unsubs.length) start(); } });
 applyNetwork();
 
 /* ---------- Son senkron zamanı ---------- */
@@ -255,16 +269,26 @@ let pendT = false, pendF = false;
 
 function start() {
   if (unsubs.length) return;
-  const onErr = (err) => { console.error(err); statusEl.textContent = "Hata: izin yok"; statusEl.className = "status wait"; };
+  const onErr = (err) => {
+    console.error(err);
+    // Hata gelince Firestore dinlemeyi bırakır; kendimiz yeniden başlatmalıyız.
+    stop();
+    const code = (err && err.code) || "";
+    errMsg = (code === "permission-denied" || code === "unauthenticated")
+      ? "Oturum geçersiz – çıkış yapıp tekrar gir"
+      : "Bağlantı sorunu (" + (code || "bilinmiyor") + ") – tekrar deneniyor";
+    updateStatus();
+    scheduleRetry();
+  };
   unsubs.push(onSnapshot(query(tasksCol, orderBy("createdAt", "desc")), { includeMetadataChanges: true }, (snap) => {
     tasks = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     pendT = snap.metadata.hasPendingWrites; pendingWrites = pendT || pendF;
-    markSynced(snap); updateStatus(); render();
+    errMsg = ""; retryDelay = 5000; markSynced(snap); updateStatus(); render();
   }, onErr));
   unsubs.push(onSnapshot(query(foldersCol, orderBy("createdAt", "asc")), { includeMetadataChanges: true }, (snap) => {
     folders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     pendF = snap.metadata.hasPendingWrites; pendingWrites = pendT || pendF;
-    markSynced(snap); updateStatus(); render();
+    errMsg = ""; retryDelay = 5000; markSynced(snap); updateStatus(); render();
   }, onErr));
 }
 function stop() { unsubs.forEach((u) => u()); unsubs = []; }
