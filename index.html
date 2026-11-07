@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14213d">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Görevler</title>
+<style>
+  :root {
+    --bg: #eef1f6; --card: #ffffff; --ink: #14213d; --muted: #6b7690;
+    --line: #d9dfeb; --accent: #14213d; --on-accent: #ffffff; --mark: #ffd23f; --danger: #c0392b;
+    --ok: #1f8a5b; --warn: #b7791f; --hover: #f2f5fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1624; --card: #172036; --ink: #e8ecf5; --muted: #8b97b3;
+      --line: #263250; --accent: #ffd23f; --on-accent: #0f1624; --mark: #ffd23f; --danger: #ff7b6b;
+      --ok: #4fd1a1; --warn: #f6c453; --hover: #1d2946;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { min-height: 100vh; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 80px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 1.6rem; margin: 0; letter-spacing: -0.02em; }
+  .status { font-size: .8rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+    color: var(--muted); background: var(--card); white-space: nowrap; }
+  .status.ok { color: var(--ok); border-color: var(--ok); }
+  .status.wait { color: var(--warn); border-color: var(--warn); }
+  .syncinfo { font-size: .82rem; color: var(--muted); margin: 6px 0 16px; }
+
+  form.add { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+  form.add input[type=text] { flex: 1 1 200px; }
+  form.add select { flex: 1 1 100%; }
+  input[type=text], input[type=email], input[type=password], select {
+    font: inherit; padding: 13px 14px; border-radius: 10px; border: 1.5px solid var(--line);
+    background: var(--card); color: var(--ink); min-width: 0; }
+  input:focus-visible, button:focus-visible, select:focus-visible { outline: 3px solid var(--mark); outline-offset: 2px; }
+  button { font: inherit; cursor: pointer; border: 0; border-radius: 10px; padding: 13px 18px;
+    background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  button.ghost { background: transparent; color: var(--muted); padding: 8px 10px; font-weight: 500; font-size: .88rem; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin: 4px 0 14px; }
+
+  ul { list-style: none; margin: 0; padding: 0; }
+  .loose { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .loose li, .group { background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  .loose li { display: flex; align-items: center; gap: 12px; padding: 12px 8px 12px 14px; }
+  .group { margin-bottom: 10px; overflow: hidden; }
+  .fhead { display: flex; align-items: center; }
+  .fmain { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: transparent;
+    color: var(--ink); text-align: left; padding: 14px 8px 14px 14px; border-radius: 0; font-weight: 600; }
+  .fmain:hover { background: var(--hover); }
+  .fmain svg { flex: none; color: var(--muted); }
+  .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .count { color: var(--muted); font-weight: 500; font-size: .85rem; }
+  .chev { transition: transform .15s; }
+  .group.closed .chev { transform: rotate(-90deg); }
+  .group.closed .kids { display: none; }
+  .icon { background: transparent; color: var(--muted); padding: 8px 10px; font-size: 1.15rem; line-height: 1; font-weight: 500; }
+  .icon:hover { background: var(--hover); }
+  .icon.del { color: var(--danger); font-size: 1.3rem; }
+  .kids li { display: flex; align-items: center; gap: 12px; padding: 9px 8px 9px 40px; }
+  .kids li.hint { color: var(--muted); font-size: .9rem; padding-bottom: 14px; }
+  .txt { flex: 1; min-width: 0; word-break: break-word; line-height: 1.35; }
+  li.done .txt { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--mark); text-decoration-thickness: 3px; }
+
+  input.chk { appearance: none; -webkit-appearance: none; width: 22px; height: 22px; flex: none; margin: 0;
+    border: 2px solid var(--muted); border-radius: 50%; cursor: pointer; display: grid; place-content: center; background: transparent; }
+  input.chk:checked { background: var(--ok); border-color: var(--ok); }
+  input.chk:checked::after { content: ""; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translate(-1px,-1px); }
+
+  .empty { text-align: center; color: var(--muted); padding: 36px 8px; }
+  #login { max-width: 360px; margin: 14vh auto 0; display: flex; flex-direction: column; gap: 10px; }
+  #login h1 { margin-bottom: 8px; }
+  .err { color: var(--danger); font-size: .9rem; min-height: 1.2em; }
+  [hidden] { display: none !important; }
+
+  dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--ink);
+    padding: 8px; width: min(340px, 92vw); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h2 { font-size: .95rem; margin: 8px 10px 6px; color: var(--muted); font-weight: 600; }
+  dialog button { display: block; width: 100%; text-align: left; background: transparent; color: var(--ink);
+    font-weight: 500; padding: 13px 12px; }
+  dialog button:hover { background: var(--hover); }
+  dialog button.danger { color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <form id="login" hidden>
+    <h1>Görevler</h1>
+    <input type="email" id="email" placeholder="E-posta" autocomplete="username" required>
+    <input type="password" id="pass" placeholder="Şifre" autocomplete="current-password" required>
+    <button type="submit">Giriş yap</button>
+    <div class="err" id="loginErr"></div>
+    <div style="color:var(--muted);font-size:.85rem">İlk girişte internet gerekir (Wi-Fi önerilir). Sonra hep açık kalır.</div>
+  </form>
+
+  <main id="app" hidden>
+    <header>
+      <h1>Görevler</h1>
+      <span class="status" id="status">…</span>
+    </header>
+    <div class="syncinfo" id="syncInfo"></div>
+
+    <form class="add" id="addForm">
+      <input type="text" id="newText" placeholder="Yeni görev yaz" autocomplete="off" maxlength="500">
+      <button type="submit">Ekle</button>
+      <select id="folderSel" aria-label="Klasör"></select>
+    </form>
+
+    <div class="toolbar">
+      <button class="ghost" id="newFolder" type="button">+ Yeni klasör</button>
+      <button class="ghost" id="clearDone" type="button" hidden>Tamamlananları sil</button>
+    </div>
+
+    <div id="list"></div>
+    <div class="empty" id="empty" hidden>Henüz görev yok. Yukarıya ilk görevini yaz.</div>
+
+    <div style="margin-top:32px;text-align:center">
+      <button class="ghost" id="logout" type="button">Çıkış yap</button>
+    </div>
+  </main>
+</div>
+
+<dialog id="sheet"></dialog>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy,
+  enableNetwork, disableNetwork, writeBatch }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyA8uclw6996FfuTtaDVLm4gadt3P3CCF7w",
+  authDomain: "missions-c1ab3.firebaseapp.com",
+  projectId: "missions-c1ab3",
+  storageBucket: "missions-c1ab3.firebasestorage.app",
+  messagingSenderId: "104358985252",
+  appId: "1:104358985252:web:ae66e63f76f09a882de2b1"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
+const tasksCol = collection(db, "tasks");
+const foldersCol = collection(db, "folders");
+
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status");
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+};
+
+/* ---------- Sadece Wi-Fi'de senkron ---------- */
+const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+let netOn = null, pendingWrites = false;
+function networkAllowed() {
+  if (!navigator.onLine) return false;
+  const t = conn && conn.type;
+  if (t === "cellular" || t === "bluetooth" || t === "wimax" || t === "none") return false;
+  return true;
+}
+async function applyNetwork() {
+  const allowed = networkAllowed();
+  if (allowed !== netOn) {
+    netOn = allowed;
+    try { allowed ? await enableNetwork(db) : await disableNetwork(db); } catch (e) { console.warn(e); }
+  }
+  updateStatus();
+}
+function updateStatus() {
+  if (netOn) {
+    statusEl.textContent = pendingWrites ? "Senkron oluyor…" : "Senkron açık";
+    statusEl.className = "status ok";
+  } else if (!navigator.onLine) {
+    statusEl.textContent = "Çevrimdışı – Wi-Fi bekleniyor";
+    statusEl.className = "status wait";
+  } else {
+    statusEl.textContent = "Mobil veri – Wi-Fi bekleniyor";
+    statusEl.className = "status wait";
+  }
+}
+window.addEventListener("online", applyNetwork);
+window.addEventListener("offline", applyNetwork);
+if (conn && conn.addEventListener) conn.addEventListener("change", applyNetwork);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) applyNetwork(); });
+applyNetwork();
+
+/* ---------- Son senkron zamanı ---------- */
+let lastSync = Number(store.get("lastSync")) || 0;
+function renderSync() {
+  const el = $("syncInfo");
+  if (!lastSync) { el.textContent = "Son senkron: henüz yapılmadı"; return; }
+  const d = new Date(lastSync);
+  const opts = { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+  el.textContent = "Son senkron: " + d.toLocaleString("tr-TR", opts);
+}
+function markSynced(snap) {
+  // Veri sunucudan geldi ve bekleyen yerel yazma kalmadıysa senkron tamamdır.
+  if (!snap.metadata.fromCache && !snap.metadata.hasPendingWrites) {
+    lastSync = Date.now(); store.set("lastSync", String(lastSync)); renderSync();
+  }
+}
+renderSync();
+
+/* ---------- Giriş ---------- */
+onAuthStateChanged(auth, (user) => {
+  if (user) { $("login").hidden = true; $("app").hidden = false; start(); }
+  else { stop(); $("app").hidden = true; $("login").hidden = false; }
+});
+$("login").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("loginErr").textContent = "";
+  try {
+    await signInWithEmailAndPassword(auth, $("email").value.trim(), $("pass").value);
+  } catch (err) {
+    $("loginErr").textContent = err.code === "auth/network-request-failed"
+      ? "Bağlantı kurulamadı. İnternete bağlı olduğundan emin ol."
+      : "E-posta veya şifre hatalı.";
+  }
+});
+$("logout").addEventListener("click", () => signOut(auth));
+
+/* ---------- Veri ---------- */
+let tasks = [], folders = [], unsubs = [];
+const collapsed = new Set(JSON.parse(store.get("collapsed") || "[]"));
+let pendT = false, pendF = false;
+
+function start() {
+  if (unsubs.length) return;
+  const onErr = (err) => { console.error(err); statusEl.textContent = "Hata: izin yok"; statusEl.className = "status wait"; };
+  unsubs.push(onSnapshot(query(tasksCol, orderBy("createdAt", "desc")), { includeMetadataChanges: true }, (snap) => {
+    tasks = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    pendT = snap.metadata.hasPendingWrites; pendingWrites = pendT || pendF;
+    markSynced(snap); updateStatus(); render();
+  }, onErr));
+  unsubs.push(onSnapshot(query(foldersCol, orderBy("createdAt", "asc")), { includeMetadataChanges: true }, (snap) => {
+    folders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    pendF = snap.metadata.hasPendingWrites; pendingWrites = pendT || pendF;
+    markSynced(snap); updateStatus(); render();
+  }, onErr));
+}
+function stop() { unsubs.forEach((u) => u()); unsubs = []; }
+
+/* ---------- Çizim ---------- */
+function el(tag, props = {}, ...kids) {
+  const n = document.createElement(tag);
+  Object.assign(n, props);
+  kids.forEach((k) => n.append(k));
+  return n;
+}
+const ICON_STACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14"/><path d="M4 8h16"/><rect x="3" y="12" width="18" height="8" rx="2"/></svg>';
+const ICON_CHEV = '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+
+function taskRow(t, extraClass) {
+  const li = el("li", { className: (t.done ? "done " : "") + (extraClass || "") });
+  const cb = el("input", { type: "checkbox", className: "chk", checked: !!t.done });
+  cb.setAttribute("aria-label", "Yapıldı");
+  cb.addEventListener("change", () => updateDoc(doc(db, "tasks", t.id), { done: cb.checked }));
+  const txt = el("span", { className: "txt", textContent: t.text });
+  const move = el("button", { className: "icon", type: "button", title: "Klasöre taşı" });
+  move.innerHTML = ICON_STACK; move.setAttribute("aria-label", "Klasöre taşı");
+  move.addEventListener("click", () => openMove(t));
+  const del = el("button", { className: "icon del", type: "button", textContent: "×", title: "Sil" });
+  del.setAttribute("aria-label", "Sil");
+  del.addEventListener("click", () => deleteDoc(doc(db, "tasks", t.id)));
+  li.append(cb, txt, move, del);
+  return li;
+}
+const openFirst = (a) => [...a.filter((t) => !t.done), ...a.filter((t) => t.done)];
+
+function render() {
+  const root = $("list");
+  const byFolder = new Map(folders.map((f) => [f.id, []]));
+  const loose = [];
+  tasks.forEach((t) => (t.folderId && byFolder.has(t.folderId) ? byFolder.get(t.folderId).push(t) : loose.push(t)));
+
+  const nodes = folders.map((f) => {
+    const list = openFirst(byFolder.get(f.id));
+    const isClosed = collapsed.has(f.id);
+    const g = el("div", { className: "group" + (isClosed ? " closed" : "") });
+
+    const main = el("button", { className: "fmain", type: "button" });
+    main.innerHTML = ICON_STACK;
+    main.append(el("span", { className: "fname", textContent: f.name }),
+                el("span", { className: "count", textContent: String(list.filter((t) => !t.done).length) }));
+    main.insertAdjacentHTML("beforeend", ICON_CHEV);
+    main.addEventListener("click", () => {
+      collapsed.has(f.id) ? collapsed.delete(f.id) : collapsed.add(f.id);
+      store.set("collapsed", JSON.stringify([...collapsed])); render();
+    });
+    const plus = el("button", { className: "icon", type: "button", textContent: "+", title: "Bu klasöre görev ekle" });
+    plus.setAttribute("aria-label", "Bu klasöre görev ekle");
+    plus.addEventListener("click", () => { $("folderSel").value = f.id; $("newText").focus(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+    const more = el("button", { className: "icon", type: "button", textContent: "⋯", title: "Klasör işlemleri" });
+    more.setAttribute("aria-label", "Klasör işlemleri");
+    more.addEventListener("click", () => openFolderMenu(f, list.length));
+    g.append(el("div", { className: "fhead" }, main, plus, more));
+
+    const kids = el("ul", { className: "kids" });
+    if (list.length) list.forEach((t) => kids.append(taskRow(t)));
+    else kids.append(el("li", { className: "hint", textContent: "Boş klasör. + ile görev ekle." }));
+    g.append(kids);
+    return g;
+  });
+  if (loose.length) {
+    const ul = el("ul", { className: "loose" });
+    openFirst(loose).forEach((t) => ul.append(taskRow(t)));
+    nodes.push(ul);
+  }
+  root.replaceChildren(...nodes);
+
+  // Klasör seçici
+  const sel = $("folderSel"), prev = sel.value;
+  sel.replaceChildren(el("option", { value: "", textContent: "Klasörsüz" }),
+    ...folders.map((f) => el("option", { value: f.id, textContent: f.name })));
+  sel.value = folders.some((f) => f.id === prev) ? prev : "";
+
+  $("empty").hidden = tasks.length > 0 || folders.length > 0;
+  $("clearDone").hidden = !tasks.some((t) => t.done);
+}
+
+/* ---------- Menüler ---------- */
+const sheet = $("sheet");
+sheet.addEventListener("click", (e) => { if (e.target === sheet) sheet.close(); });
+function openSheet(title, items) {
+  sheet.replaceChildren(el("h2", { textContent: title }),
+    ...items.map((it) => {
+      const b = el("button", { type: "button", textContent: it.label, className: it.danger ? "danger" : "" });
+      b.addEventListener("click", () => { sheet.close(); it.run(); });
+      return b;
+    }));
+  sheet.showModal();
+}
+function openMove(t) {
+  const items = [];
+  if (t.folderId) items.push({ label: "Klasörsüz", run: () => updateDoc(doc(db, "tasks", t.id), { folderId: null }) });
+  folders.filter((f) => f.id !== t.folderId).forEach((f) =>
+    items.push({ label: f.name, run: () => updateDoc(doc(db, "tasks", t.id), { folderId: f.id }) }));
+  if (!items.length) items.push({ label: "Önce bir klasör oluştur", run: () => {} });
+  openSheet("Klasöre taşı", items);
+}
+function openFolderMenu(f, count) {
+  openSheet(f.name, [
+    { label: "Yeniden adlandır", run: () => {
+        const name = (prompt("Klasör adı", f.name) || "").trim();
+        if (name) updateDoc(doc(db, "folders", f.id), { name });
+    } },
+    { label: "Klasörü sil", danger: true, run: () => {
+        const msg = count ? `"${f.name}" silinsin mi? İçindeki ${count} görev silinmez, klasörsüz kalır.` : `"${f.name}" silinsin mi?`;
+        if (!confirm(msg)) return;
+        const batch = writeBatch(db);
+        tasks.filter((t) => t.folderId === f.id).forEach((t) => batch.update(doc(db, "tasks", t.id), { folderId: null }));
+        batch.delete(doc(db, "folders", f.id));
+        batch.commit();
+    } }
+  ]);
+}
+
+/* ---------- Eylemler ---------- */
+$("addForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = $("newText"), text = input.value.trim();
+  if (!text) return;
+  // Çevrimdışıyken await etme: yerel kayda hemen yazılır, bağlantı gelince gönderilir.
+  setDoc(doc(db, "tasks", crypto.randomUUID()), { text, done: false, createdAt: Date.now(), folderId: $("folderSel").value || null });
+  input.value = ""; input.focus();
+});
+$("newFolder").addEventListener("click", () => {
+  const name = (prompt("Klasör adı") || "").trim();
+  if (name) setDoc(doc(db, "folders", crypto.randomUUID()), { name, createdAt: Date.now() });
+});
+$("clearDone").addEventListener("click", () => {
+  const done = tasks.filter((t) => t.done);
+  if (!done.length || !confirm(done.length + " tamamlanmış görev silinsin mi?")) return;
+  const batch = writeBatch(db);
+  done.forEach((t) => batch.delete(doc(db, "tasks", t.id)));
+  batch.commit();
+});
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+</script>
+</body>
+</html>
