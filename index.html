@@ -69,6 +69,9 @@
   .kids li { display: flex; align-items: center; gap: 12px; padding: 9px 8px 9px 40px; }
   .kids li.hint { color: var(--muted); font-size: .9rem; padding-bottom: 14px; }
   .txt { flex: 1; min-width: 0; word-break: break-word; line-height: 1.35; }
+  .txt { cursor: text; }
+  input.edit { flex: 1; padding: 8px 10px; }
+  .footer { margin-top: 32px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
   li.done .txt { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--mark); text-decoration-thickness: 3px; }
 
   input.chk { appearance: none; -webkit-appearance: none; width: 22px; height: 22px; flex: none; margin: 0;
@@ -126,9 +129,12 @@
     <div id="list"></div>
     <div class="empty" id="empty" hidden>Henüz görev yok. Yukarıya ilk görevini yaz.</div>
 
-    <div style="margin-top:32px;text-align:center">
+    <div class="footer">
+      <button class="ghost" id="backupBtn" type="button">Yedek indir</button>
+      <button class="ghost" id="restoreBtn" type="button">Yedekten yükle</button>
       <button class="ghost" id="logout" type="button">Çıkış yap</button>
     </div>
+    <input type="file" id="restoreFile" accept=".json,application/json" hidden>
   </main>
 </div>
 
@@ -184,7 +190,23 @@ async function applyNetwork() {
   }
   updateStatus();
 }
-let errMsg = "", retryTimer = null, retryDelay = 5000;
+let errMsg = "", firstErr = "", retryTimer = null, retryDelay = 5000;
+// Dinleyici hata verirse Firestore'u temiz başlatmak için sayfayı yenile (bekleyen yazmalar cihazda saklanır).
+function scheduleRecover() {
+  if (retryTimer || !auth.currentUser) return;
+  let log = [];
+  try { log = JSON.parse(sessionStorage.getItem("recov") || "[]").filter((ts) => Date.now() - ts < 120000); } catch {}
+  const limited = log.length >= 3;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (!auth.currentUser) return;
+    if (!limited) {
+      log.push(Date.now());
+      try { sessionStorage.setItem("recov", JSON.stringify(log)); } catch {}
+      location.reload();
+    } else { start(); }
+  }, limited ? 30000 : 4000);
+}
 function scheduleRetry() {
   if (retryTimer || !auth.currentUser) return;
   retryTimer = setTimeout(() => {
@@ -271,24 +293,28 @@ function start() {
   if (unsubs.length) return;
   const onErr = (err) => {
     console.error(err);
-    // Hata gelince Firestore dinlemeyi bırakır; kendimiz yeniden başlatmalıyız.
     stop();
-    const code = (err && err.code) || "";
-    errMsg = (code === "permission-denied" || code === "unauthenticated")
-      ? "Oturum geçersiz – çıkış yapıp tekrar gir"
-      : "Bağlantı sorunu (" + (code || "bilinmiyor") + ") – tekrar deneniyor";
+    const code = (err && err.code) || "bilinmiyor";
+    if (code === "permission-denied" || code === "unauthenticated") {
+      errMsg = "Oturum geçersiz – çıkış yapıp tekrar gir";
+      updateStatus();
+      scheduleRetry();
+      return;
+    }
+    if (!firstErr) firstErr = code;
+    errMsg = "Bağlantı sorunu (" + (firstErr === code ? code : firstErr + " → " + code) + ")";
     updateStatus();
-    scheduleRetry();
+    scheduleRecover();
   };
   unsubs.push(onSnapshot(query(tasksCol, orderBy("createdAt", "desc")), { includeMetadataChanges: true }, (snap) => {
     tasks = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     pendT = snap.metadata.hasPendingWrites; pendingWrites = pendT || pendF;
-    errMsg = ""; retryDelay = 5000; markSynced(snap); updateStatus(); render();
+    errMsg = ""; firstErr = ""; retryDelay = 5000; markSynced(snap); updateStatus(); render();
   }, onErr));
   unsubs.push(onSnapshot(query(foldersCol, orderBy("createdAt", "asc")), { includeMetadataChanges: true }, (snap) => {
     folders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     pendF = snap.metadata.hasPendingWrites; pendingWrites = pendT || pendF;
-    errMsg = ""; retryDelay = 5000; markSynced(snap); updateStatus(); render();
+    errMsg = ""; firstErr = ""; retryDelay = 5000; markSynced(snap); updateStatus(); render();
   }, onErr));
 }
 function stop() { unsubs.forEach((u) => u()); unsubs = []; }
@@ -309,6 +335,23 @@ function taskRow(t, extraClass) {
   cb.setAttribute("aria-label", "Yapıldı");
   cb.addEventListener("change", () => updateDoc(doc(db, "tasks", t.id), { done: cb.checked }));
   const txt = el("span", { className: "txt", textContent: t.text });
+  txt.title = "Düzenlemek için dokun";
+  txt.addEventListener("click", () => {
+    const inp = el("input", { type: "text", className: "edit", value: t.text, maxLength: 500 });
+    let finished = false;
+    const finish = (save) => {
+      if (finished) return; finished = true;
+      const v = inp.value.trim();
+      if (save && v && v !== t.text) updateDoc(doc(db, "tasks", t.id), { text: v });
+      else inp.replaceWith(txt);
+    };
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); finish(true); }
+      else if (e.key === "Escape") finish(false);
+    });
+    inp.addEventListener("blur", () => finish(true));
+    txt.replaceWith(inp); inp.focus(); inp.select();
+  });
   const move = el("button", { className: "icon", type: "button", title: "Klasöre taşı" });
   move.innerHTML = ICON_STACK; move.setAttribute("aria-label", "Klasöre taşı");
   move.addEventListener("click", () => openMove(t));
@@ -427,6 +470,45 @@ $("clearDone").addEventListener("click", () => {
   const batch = writeBatch(db);
   done.forEach((t) => batch.delete(doc(db, "tasks", t.id)));
   batch.commit();
+});
+
+/* ---------- Yedek ---------- */
+$("backupBtn").addEventListener("click", () => {
+  const data = {
+    app: "gorevler", version: 1, exportedAt: new Date().toISOString(),
+    folders: folders.map((f) => ({ id: f.id, name: f.name, createdAt: f.createdAt })),
+    tasks: tasks.map((t) => ({ id: t.id, text: t.text, done: !!t.done, createdAt: t.createdAt, folderId: t.folderId || null }))
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = el("a", { href: url, download: "gorevler-yedek-" + new Date().toISOString().slice(0, 10) + ".json" });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+$("restoreBtn").addEventListener("click", () => $("restoreFile").click());
+$("restoreFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; e.target.value = "";
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const okId = (s) => typeof s === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(s);
+    const fl = (Array.isArray(data.folders) ? data.folders : []).filter((f) => okId(f.id) && typeof f.name === "string" && f.name.trim() && f.name.length <= 100);
+    const tk = (Array.isArray(data.tasks) ? data.tasks : []).filter((t) => okId(t.id) && typeof t.text === "string" && t.text.trim() && t.text.length <= 500);
+    if (!fl.length && !tk.length) { alert("Bu dosyada geri yüklenecek görev bulunamadı."); return; }
+    if (!confirm(fl.length + " klasör ve " + tk.length + " görev yüklenecek. Aynı kimlikli kayıtların üzerine yazılır, diğerlerine dokunulmaz. Devam edilsin mi?")) return;
+    const ops = [
+      ...fl.map((f) => [doc(db, "folders", f.id), { name: f.name.trim(), createdAt: Number(f.createdAt) || Date.now() }]),
+      ...tk.map((t) => [doc(db, "tasks", t.id), { text: t.text.trim(), done: !!t.done, createdAt: Number(t.createdAt) || Date.now(), folderId: okId(t.folderId) ? t.folderId : null }])
+    ];
+    for (let i = 0; i < ops.length; i += 400) {
+      const b = writeBatch(db);
+      ops.slice(i, i + 400).forEach(([ref, d]) => b.set(ref, d));
+      b.commit().catch(() => alert("Yedek yüklenemedi. Giriş yaptığından emin ol."));
+    }
+    alert("Yedek yükleniyor. Wi-Fi'deyken senkron olacak.");
+  } catch (err) {
+    alert("Dosya okunamadı. Geçerli bir yedek dosyası seçtiğinden emin ol.");
+  }
 });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
