@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#000000">
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'none'; form-action 'self'">
+<style id="antiClickjack">body{display:none !important}</style>
+<script>
+  // Başka bir sitenin içine (iframe) gömülürsen sayfa gizli kalır ve kendini en üste çıkarmaya çalışır.
+  if (self === top) { document.getElementById("antiClickjack").remove(); }
+  else { try { top.location = self.location; } catch (e) {} }
+</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
