@@ -1,4 +1,4 @@
-const CACHE = "gorevler-v3";
+const CACHE = "gorevler-v4";
 const CORE = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -19,7 +19,7 @@ self.addEventListener("fetch", (e) => {
     const hit = await cache.match(e.request, { ignoreSearch: true });
     if (!same && hit) return hit; // Firebase kütüphanesi: önbellekten
     try { // Kendi dosyalarımız: önce ağ (güncellemeler hemen gelsin), olmazsa önbellek
-      const res = await fetch(e.request);
+      const res = await fetch(same ? e.request.url : e.request, same ? { cache: "no-cache" } : undefined);
       if (res && res.status === 200) cache.put(e.request, res.clone());
       return res;
     } catch (err) {
