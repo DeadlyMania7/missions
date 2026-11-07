@@ -132,7 +132,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
   from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy,
-  enableNetwork, disableNetwork, writeBatch }
+  enableNetwork, disableNetwork, writeBatch, terminate, clearIndexedDbPersistence }
   from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -215,7 +215,7 @@ renderSync();
 /* ---------- Giriş ---------- */
 onAuthStateChanged(auth, (user) => {
   if (user) { $("login").hidden = true; $("app").hidden = false; start(); }
-  else { stop(); $("app").hidden = true; $("login").hidden = false; }
+  else { stop(); tasks = []; folders = []; render(); $("app").hidden = true; $("login").hidden = false; }
 });
 $("login").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -228,7 +228,17 @@ $("login").addEventListener("submit", async (e) => {
       : "E-posta veya şifre hatalı.";
   }
 });
-$("logout").addEventListener("click", () => signOut(auth));
+$("logout").addEventListener("click", async () => {
+  if (pendingWrites && !confirm("Senkron olmamış görevler var. Çıkış yaparsan bu görevler kaybolur. Çıkılsın mı?")) return;
+  stop(); tasks = []; folders = []; render();
+  try {
+    await signOut(auth);
+    await terminate(db);
+    await clearIndexedDbPersistence(db); // cihazdaki çevrimdışı kopyayı sil
+  } catch (e) { console.warn(e); }
+  store.set("lastSync", "");
+  location.reload();
+});
 
 /* ---------- Veri ---------- */
 let tasks = [], folders = [], unsubs = [];
