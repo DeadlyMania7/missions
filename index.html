@@ -80,6 +80,15 @@
   input.chk:checked::after { content: ""; width: 5px; height: 10px; border: solid #000; border-width: 0 2px 2px 0;
     transform: rotate(45deg) translate(-1px,-1px); }
 
+  .pinhead { margin: 18px 0 10px; font-size: .85rem; font-weight: 600; display: flex; align-items: center; gap: 6px; color: var(--ink); }
+  .pinhead svg { color: var(--accent); }
+  .pins { display: flex; flex-direction: column; gap: 12px; margin: 0 0 22px; }
+  .pins li { display: flex; align-items: center; gap: 12px; padding: 12px 8px 12px 14px; background: var(--card);
+    border-radius: 12px; border: 1px solid #ff0000;
+    box-shadow: 0 0 8px rgba(255,0,0,.65), 0 0 22px rgba(255,0,0,.32), inset 0 0 10px rgba(255,0,0,.14); }
+  .tag { flex: none; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: .72rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
+  .icon.pin.on { color: #ff0000; }
   .empty { text-align: center; color: var(--muted); padding: 36px 8px; }
   #login { max-width: 360px; margin: 14vh auto 0; display: flex; flex-direction: column; gap: 10px; }
   #login h1 { margin-bottom: 8px; }
@@ -329,7 +338,10 @@ function el(tag, props = {}, ...kids) {
 const ICON_STACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14"/><path d="M4 8h16"/><rect x="3" y="12" width="18" height="8" rx="2"/></svg>';
 const ICON_CHEV = '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
 
-function taskRow(t, extraClass) {
+const ICON_PIN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6z"/><path d="M12 14v7"/></svg>';
+const ICON_PIN_ON = ICON_PIN.replace('fill="none"', 'fill="currentColor"');
+
+function taskRow(t, extraClass, showFolder) {
   const li = el("li", { className: (t.done ? "done " : "") + (extraClass || "") });
   const cb = el("input", { type: "checkbox", className: "chk", checked: !!t.done });
   cb.setAttribute("aria-label", "Yapıldı");
@@ -358,7 +370,17 @@ function taskRow(t, extraClass) {
   const del = el("button", { className: "icon del", type: "button", textContent: "×", title: "Sil" });
   del.setAttribute("aria-label", "Sil");
   del.addEventListener("click", () => deleteDoc(doc(db, "tasks", t.id)));
-  li.append(cb, txt, move, del);
+  const pin = el("button", { className: "icon pin" + (t.pinned ? " on" : ""), type: "button", title: t.pinned ? "Sabitlemeyi kaldır" : "Üste sabitle" });
+  pin.innerHTML = t.pinned ? ICON_PIN_ON : ICON_PIN;
+  pin.setAttribute("aria-label", t.pinned ? "Sabitlemeyi kaldır" : "Üste sabitle");
+  pin.addEventListener("click", () =>
+    updateDoc(doc(db, "tasks", t.id), t.pinned ? { pinned: false } : { pinned: true, pinnedAt: Date.now() }));
+  const parts = [cb, txt];
+  if (showFolder) {
+    const f = folders.find((x) => x.id === t.folderId);
+    if (f) parts.push(el("span", { className: "tag", textContent: f.name }));
+  }
+  li.append(...parts, pin, move, del);
   return li;
 }
 const openFirst = (a) => [...a.filter((t) => !t.done), ...a.filter((t) => t.done)];
@@ -367,17 +389,20 @@ function render() {
   const root = $("list");
   const byFolder = new Map(folders.map((f) => [f.id, []]));
   const loose = [];
-  tasks.forEach((t) => (t.folderId && byFolder.has(t.folderId) ? byFolder.get(t.folderId).push(t) : loose.push(t)));
+  const isPin = (t) => t.pinned && !t.done;
+  const pinned = tasks.filter(isPin).sort((a, b) => (b.pinnedAt || b.createdAt || 0) - (a.pinnedAt || a.createdAt || 0));
+  tasks.filter((t) => !isPin(t)).forEach((t) => (t.folderId && byFolder.has(t.folderId) ? byFolder.get(t.folderId).push(t) : loose.push(t)));
 
   const nodes = folders.map((f) => {
     const list = openFirst(byFolder.get(f.id));
+    const pinnedHere = pinned.filter((t) => t.folderId === f.id).length;
     const isClosed = collapsed.has(f.id);
     const g = el("div", { className: "group" + (isClosed ? " closed" : "") });
 
     const main = el("button", { className: "fmain", type: "button" });
     main.innerHTML = ICON_STACK;
     main.append(el("span", { className: "fname", textContent: f.name }),
-                el("span", { className: "count", textContent: String(list.filter((t) => !t.done).length) }));
+                el("span", { className: "count", textContent: String(list.filter((t) => !t.done).length + pinnedHere) }));
     main.insertAdjacentHTML("beforeend", ICON_CHEV);
     main.addEventListener("click", () => {
       collapsed.has(f.id) ? collapsed.delete(f.id) : collapsed.add(f.id);
@@ -388,12 +413,12 @@ function render() {
     plus.addEventListener("click", () => { $("folderSel").value = f.id; $("newText").focus(); window.scrollTo({ top: 0, behavior: "smooth" }); });
     const more = el("button", { className: "icon", type: "button", textContent: "⋯", title: "Klasör işlemleri" });
     more.setAttribute("aria-label", "Klasör işlemleri");
-    more.addEventListener("click", () => openFolderMenu(f, list.length));
+    more.addEventListener("click", () => openFolderMenu(f, tasks.filter((t) => t.folderId === f.id).length));
     g.append(el("div", { className: "fhead" }, main, plus, more));
 
     const kids = el("ul", { className: "kids" });
     if (list.length) list.forEach((t) => kids.append(taskRow(t)));
-    else kids.append(el("li", { className: "hint", textContent: "Boş klasör. + ile görev ekle." }));
+    else kids.append(el("li", { className: "hint", textContent: pinnedHere ? "Bu klasördeki görevler sabitlenmiş, üstte." : "Boş klasör. + ile görev ekle." }));
     g.append(kids);
     return g;
   });
@@ -401,6 +426,14 @@ function render() {
     const ul = el("ul", { className: "loose" });
     openFirst(loose).forEach((t) => ul.append(taskRow(t)));
     nodes.push(ul);
+  }
+  if (pinned.length) {
+    const head = el("div", { className: "pinhead" });
+    head.innerHTML = ICON_PIN_ON;
+    head.append("Sabitlenenler");
+    const ul = el("ul", { className: "pins" });
+    pinned.forEach((t) => ul.append(taskRow(t, "", true)));
+    nodes.unshift(head, ul);
   }
   root.replaceChildren(...nodes);
 
@@ -477,7 +510,7 @@ $("backupBtn").addEventListener("click", () => {
   const data = {
     app: "gorevler", version: 1, exportedAt: new Date().toISOString(),
     folders: folders.map((f) => ({ id: f.id, name: f.name, createdAt: f.createdAt })),
-    tasks: tasks.map((t) => ({ id: t.id, text: t.text, done: !!t.done, createdAt: t.createdAt, folderId: t.folderId || null }))
+    tasks: tasks.map((t) => ({ id: t.id, text: t.text, done: !!t.done, createdAt: t.createdAt, folderId: t.folderId || null, pinned: !!t.pinned, pinnedAt: t.pinnedAt || 0 }))
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -498,7 +531,7 @@ $("restoreFile").addEventListener("change", async (e) => {
     if (!confirm(fl.length + " klasör ve " + tk.length + " görev yüklenecek. Aynı kimlikli kayıtların üzerine yazılır, diğerlerine dokunulmaz. Devam edilsin mi?")) return;
     const ops = [
       ...fl.map((f) => [doc(db, "folders", f.id), { name: f.name.trim(), createdAt: Number(f.createdAt) || Date.now() }]),
-      ...tk.map((t) => [doc(db, "tasks", t.id), { text: t.text.trim(), done: !!t.done, createdAt: Number(t.createdAt) || Date.now(), folderId: okId(t.folderId) ? t.folderId : null }])
+      ...tk.map((t) => [doc(db, "tasks", t.id), { text: t.text.trim(), done: !!t.done, createdAt: Number(t.createdAt) || Date.now(), folderId: okId(t.folderId) ? t.folderId : null, pinned: !!t.pinned, pinnedAt: Number(t.pinnedAt) || 0 }])
     ];
     for (let i = 0; i < ops.length; i += 400) {
       const b = writeBatch(db);
